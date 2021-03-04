@@ -9,6 +9,8 @@ import discord4j.discordjson.json.UserModifyRequest;
 import discord4j.discordjson.json.gateway.StatusUpdate;
 import discord4j.rest.util.Color;
 
+import java.io.*;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,12 +18,40 @@ import java.util.Optional;
 
 public class iCute {
 
+    private static String token = "";
+
     // TODO: Find a better way to handle spam / limit how often iCute can be used.
     public static void main(String[] args) {
 
+        // Attempt to read token from file. In case of errors, exit the program and print debug info.
+        boolean errorOccurred = false;
+        try {
+            StringBuilder stringBuilder = new StringBuilder();
+            BufferedReader bufferedReader = new BufferedReader(new FileReader("token"));
+            String currentLine;
+            while ((currentLine = bufferedReader.readLine()) != null) {
+                // Read character gets returned as a int, so to get the character representation, I have to cast it
+                // to a char. Result gets appended to StringBuilder.
+                stringBuilder.append(currentLine);
+            }
+            token = stringBuilder.toString();
+            bufferedReader.close();
+        } catch (FileNotFoundException e) {
+            System.out.println("Could not find token file in root of application! Exiting!");
+            errorOccurred = true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            errorOccurred = true;
+        }
+
+        // Exit the program if an error occurred while reading the token. This is a graceful way of preventing the
+        // disaster which would happen if token was empty and was passed to DiscordClient builder.
+        if (errorOccurred) {
+            return;
+        }
+
         final String googleIcon = "https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Fwww.androidpoli"+
                 "ce.com%2Fwp-content%2Fuploads%2F2015%2F09%2Fnexus2cee_new_google_icon.png&f=1&nofb=1";
-        final String token = "NzczOTE4Nzg3NDAwNjMwMjcz.X6QOCQ.DirkbQhyljgj1gf2Ic4JFh7M9MY";
         final DiscordClient client = DiscordClient.create(token);
         final GatewayDiscordClient gateway = client.login().block();
         final ArrayList<String> adminUsers = new ArrayList<>(Arrays.asList("Tsu#5168"));
