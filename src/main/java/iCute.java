@@ -5,12 +5,14 @@ import discord4j.core.object.entity.Message;
 import discord4j.core.object.entity.User;
 import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.core.object.reaction.ReactionEmoji;
-import discord4j.discordjson.json.UserModifyRequest;
-import discord4j.discordjson.json.gateway.StatusUpdate;
 import discord4j.rest.util.Color;
+import jdk.nashorn.internal.runtime.regexp.joni.exception.InternalException;
+import picocli.CommandLine;
 
-import java.io.*;
-import java.nio.file.Path;
+import java.io.BufferedReader;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,36 +20,27 @@ import java.util.Optional;
 
 public class iCute {
 
-    private static String token = "";
-
     // TODO: Find a better way to handle spam / limit how often iCute can be used.
+    // TODO: Started to explore picocli command line parser framework. Continue!
+    @CommandLine.Command
     public static void main(String[] args) {
 
         // Attempt to read token from file. In case of errors, exit the program and print debug info.
-        boolean errorOccurred = false;
+        String token;
         try {
             StringBuilder stringBuilder = new StringBuilder();
             BufferedReader bufferedReader = new BufferedReader(new FileReader("token"));
             String currentLine;
             while ((currentLine = bufferedReader.readLine()) != null) {
-                // Read character gets returned as a int, so to get the character representation, I have to cast it
-                // to a char. Result gets appended to StringBuilder.
+                // Read a full line of the file while there is one. Result gets appended to StringBuilder.
                 stringBuilder.append(currentLine);
             }
             token = stringBuilder.toString();
             bufferedReader.close();
         } catch (FileNotFoundException e) {
-            System.out.println("Could not find token file in root of application! Exiting!");
-            errorOccurred = true;
+            throw new InternalException("Token file not found in root of application!");
         } catch (IOException e) {
-            e.printStackTrace();
-            errorOccurred = true;
-        }
-
-        // Exit the program if an error occurred while reading the token. This is a graceful way of preventing the
-        // disaster which would happen if token was empty and was passed to DiscordClient builder.
-        if (errorOccurred) {
-            return;
+            throw new InternalException("Token file could not be read.");
         }
 
         final String googleIcon = "https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Fwww.androidpoli"+
@@ -56,21 +49,22 @@ public class iCute {
         final GatewayDiscordClient gateway = client.login().block();
         final ArrayList<String> adminUsers = new ArrayList<>(Arrays.asList("Tsu#5168"));
 
-        // Check if gateway was created succesfully. Prevent potential null pointer exception later on.
+        // Check if gateway was created successfully. Prevent potential null pointer exception later on.
         if (gateway == null) {
             throw new InternalError("Couldn't log in to create a gateway!");
         }
 
         // Start measurer.
-        TsuICMP tsuICMP = new TsuICMP();
-        tsuICMP.runMeasurer("8.8.8.8", 1000L);
+        TsuICMP tsuICMP = TsuICMP.tsuICMP;
+        tsuICMP.runMeasurer();
 
         // Subscribe to MessageCreateEvent and execute the following code when it's fired.
         gateway.on(MessageCreateEvent.class).subscribe(event -> {
             final Message message = event.getMessage();
             final MessageChannel channel = message.getChannel().block();
             final Optional<User> author = message.getAuthor();
-            final String fullUsername = author.map(user -> user.getUsername() + user.getDiscriminator()).orElse("FULL_USERNAME_GET_ERROR");
+            final String fullUsername = author.map(user -> user.getUsername() + "#" + user.getDiscriminator())
+                    .orElse("FULL_USERNAME_GET_ERROR");
             final String username = author.map(User::getUsername).orElse("USERNAME_GET_ERROR");
             final String messageText = message.getContent();
 
@@ -106,7 +100,8 @@ public class iCute {
                         .addField("Jitter %", tsuICMP.getJitterPercent() + " %", true)
                         .addField("Pool size", String.valueOf(tsuICMP.getMsList().length), true)
                         .addField("Pool utilization", poolUtilization, true)
-                        .addField("iCute verdict", tsuICMP.getInsight(), true)
+                        .addField("Latency spikes", String.valueOf(tsuICMP.getSpikes().size()), true)
+                        .addField("iCute verdict", tsuICMP.getInsight(), false)
                         //.setThumbnail(tsuICMP.getIŗmage())
                         .setFooter("Testing done against Google DNS servers.", googleIcon)
                         .setTimestamp(Instant.now())
@@ -120,25 +115,25 @@ public class iCute {
                     if (messageText.equals("$measuring:on")) {
                         // turn on
                         if (tsuICMP.isMeasurerRunning()) {
-                            channel.createMessage("Measuring is already running "+username+"! Ignoring command!").block();
+                            channel.createMessage("Measuring is already running! Ignoring command!").block();
                         } else {
-                            tsuICMP.runMeasurer("8.8.8.8", 1000L);
-                            channel.createMessage("Measuring enabled "+username+"!").block();
+                            tsuICMP.setMeasurerRunning(true);
+                            tsuICMP.runMeasurer();
+                            channel.createMessage("Measuring enabled!").block();
                         }
                     } else if (messageText.equals("$measuring:off")) {
                         // turn off
                         if (tsuICMP.isMeasurerRunning()) {
                             tsuICMP.setMeasurerRunning(false);
-                            channel.createMessage("Measurer disabled "+username+"!").block();
+                            channel.createMessage("Measurer disabled!").block();
                         } else {
-                            channel.createMessage("Measurer is not running "+username+"!").block();
+                            channel.createMessage("Measurer is not running! Ignoring command!").block();
                         }
                     } else {
                         channel.createEmbed(spec -> spec
                                 .setColor(Color.RED)
                                 .setTitle("Incorrect usage of command! Consult the text box below for proper usage.")
                                 .setDescription("$measuring:on - Turn on the measurer.\n$measuring:off - Turn off the measurer.")
-                                .setTimestamp(Instant.now())
                         ).block();
                     }
                 } else {

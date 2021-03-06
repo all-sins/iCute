@@ -5,8 +5,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.OptionalInt;
-import java.util.Random;
+import java.util.*;
 
 public class TsuICMP {
 
@@ -28,7 +27,6 @@ public class TsuICMP {
     private int maxInterval = 5000;
 
     // Constants.
-    // Implement these.
     private static final String[] domainList = new String[]{
             // OpenDNS
             "208.67.222.222", "208.67.220.220",
@@ -41,27 +39,13 @@ public class TsuICMP {
             // Quad9
             "9.9.9.9", "149.112.112.112"
     };
+
+    private final List<Spike> spikes = new ArrayList<>();
+    public static final TsuICMP tsuICMP = new TsuICMP();
     private static final int timeout = 1000; // Maximum timeout for ping.
-    private static final long[] msList = new long[100]; // Amount of results to keep in memory.
-    private static final float maxAcceptablePing = 100f; // Float as milliseconds.
-    private static final float maxAcceptableJitterPercent = 10f; // Float as percentage.
-    private static final Random randomGen = new Random();
-
-    public int getMinInterval() {
-        return minInterval;
-    }
-
-    public void setMinInterval(int minInterval) {
-        this.minInterval = minInterval;
-    }
-
-    public int getMaxInterval() {
-        return maxInterval;
-    }
-
-    public void setMaxInterval(int maxInterval) {
-        this.maxInterval = maxInterval;
-    }
+    private static final int[] msList = new int[100]; // Amount of results to keep in memory.
+    public static final int msListSize = msList.length; // Measuring array size for use in Spike class.
+    private static final Random randomGen = new Random(); // Random number generator.
 
     public boolean isMeasurerRunning() {
         return measurerRunning;
@@ -91,7 +75,7 @@ public class TsuICMP {
         return packetsDropped;
     }
 
-    public long[] getMsList() {
+    public int[] getMsList() {
         return msList;
     }
 
@@ -111,16 +95,12 @@ public class TsuICMP {
         return jitterPercent;
     }
 
-    public void setJitterPercent(float jitterPercent) {
-        this.jitterPercent = jitterPercent;
-    }
-
     public float getJitter() {
         return jitter;
     }
 
-    public void setJitter(float jitter) {
-        this.jitter = jitter;
+    public List<Spike> getSpikes() {
+        return spikes;
     }
 
     public int getRandomInt(int max, int min) {
@@ -143,7 +123,8 @@ public class TsuICMP {
         return arrayInitAmount;
     }
 
-    public void measure(String host) {
+    public void measure() {
+        String host = domainList[getRandomInt(0, domainList.length - 1)];
         try {
             InetAddress inetAddress = InetAddress.getByName(host);
             try {
@@ -156,9 +137,11 @@ public class TsuICMP {
                 // Measure response time and store it or the timeout maximum.
                 long start = System.currentTimeMillis();
                 if (inetAddress.isReachable(timeout)) {
-                    msList[pointer] = System.currentTimeMillis() - start;
+                    msList[pointer] = (int) (System.currentTimeMillis() - start);
+                    packetsSent++;
                 } else {
                     msList[pointer] = timeout;
+                    packetsDropped++;
                 }
 
                 // Move pointer to next position.
@@ -177,12 +160,11 @@ public class TsuICMP {
         }
     }
 
-    public void runMeasurer(String host, long msInterval) {
+    public void runMeasurer() {
         // Run a thread to constantly populate results.
-        TsuICMP tsuICMP = new TsuICMP();
         new Thread( () -> {
             while (measurerRunning) {
-                tsuICMP.measure(host);
+                tsuICMP.measure();
                 // tsuICMP.printResultArray();
             }
         }).start();
@@ -228,22 +210,20 @@ public class TsuICMP {
         }
     }
 
-    public static void main(String[] args) throws InterruptedException, IOException {
-        TsuICMP tsuICMP = new TsuICMP();
-        for (int i = 0; i < 1000; i++) {
-            tsuICMP.measure("8.8.8.8");
-            tsuICMP.printResultArray();
-            System.out.println();
-        }
-    }
-
     public void analyse() {
 
         // Find lowest ping.
         float sum = 0;
-        long min = msList[0];
-        long max = msList[0];
-        for (Long item : msList) {
+        int min = msList[0];
+        int max = msList[0];
+
+        // Calculate sum of all elements.
+        for (int i : msList) {
+            sum += i;
+        }
+        averageMs = BigDecimal.valueOf(sum / getArrayInitAmount()).setScale(2, RoundingMode.UP).floatValue();
+
+        for (int item : msList) {
 
             // Extra check for 0 while array inits.
             if (item != 0) {
@@ -251,28 +231,32 @@ public class TsuICMP {
                 if (item < min) {
                     min = item;
                 }
+
+                // If a item in the latency list deviates by half then assume that it's a spike.
+                if (item > averageMs + 30) {
+                    spikes.add(new Spike(item));
+                }
             }
+
+            // Lover TTL on all Spike's in spikes list or remove spike if it's TTL runs out.
+            List<Spike> spikesToRemove = new ArrayList<>();
+            for (Spike spike : spikes) {
+                if (spike.ttl - 1 <= 0) {
+                    spikesToRemove.add(spike);
+                } else {
+                    spike.ttl--;
+                }
+            }
+            spikes.removeAll(spikesToRemove);
 
             // Calculate maximum.
             if (item > max) {
                 max = item;
             }
 
-            // Check if packet timed out.
-            if (item >= 2000) {
-                packetsDropped++;
-            }
-            if (item < 2000 && item > 0) {
-                packetsSent++;
-            }
-
-            // Calculate sum of all elements.
-            sum += item;
-
         }
         highestMs = max;
         lowestMs = min;
-        averageMs = BigDecimal.valueOf(sum / getArrayInitAmount()).setScale(2, RoundingMode.UP).floatValue();
 
         // Calculate difference between average, minimum and maximum as a number and as a percentage.
         // https://www.calculatorsoup.com/calculators/algebra/percent-difference-calculator.php
@@ -282,56 +266,52 @@ public class TsuICMP {
         jitterPercent = BigDecimal.valueOf(tempJitterPercent).setScale(2, RoundingMode.UP).floatValue();
 
         // Determine insight.
-        if (jitterPercent < 50 && averageMs < 30) {
-            insight = "Tsu's internet is currently absolutely amazing! Good for even fighting games!";
+        // Switch statement doesn't work with logical operators, so unfortunately my hand was forced to make this
+        // huge if else chain.
+        if (averageMs < 30 && spikes.size() < 0.05 * msList.length) {
+            insight = "The connection is currently absolutely amazing! Good for even fighting games!";
             color = Color.of(0, 255, 255);
             image = "https://i.pinimg.com/originals/9c/da/52/9cda52a9128defc55ed86e8bd7c55f54.gif";
-        } else if (jitterPercent < 20 && averageMs < 70) {
-            insight = "Tsu's internet is alright! Passable for shooters!";
+        } else if (averageMs < 50 && spikes.size() < 0.10 * msList.length) {
+            insight = "The connection is alright! Passable for shooters!";
             color = Color.of(0, 255, 0);
             image = "https://media.giphy.com/media/EktbegF3J8QIo/giphy.gif";
-        }
-        else if (jitterPercent < 15 && averageMs < 100) {
-            insight = "Tsu's internet is acceptable! Sketchy though!";
+        } else if (averageMs < 70 && spikes.size() < 0.15 * msList.length) {
+            insight = "The connection is acceptable! Sketchy though!";
             color = Color.of(255, 255, 0);
             image = "https://media.giphy.com/media/dZXFMaFBlReiA/giphy.gif";
-        }
-        else if (jitterPercent < 30 && averageMs < 100) {
-            insight = "Tsu's internet is borderline laggy! You tempt fate by playing!";
+        } else if (averageMs < 90 && spikes.size() < 0.20 * msList.length) {
+            insight = "The connection is borderline laggy! You tempt fate by playing!";
             color = Color.of(255, 100, 0);
             image = "https://media.giphy.com/media/RwnFuvcQTktQA/giphy.gif";
-        }
-        else if (jitterPercent < 30 && averageMs < 150) {
-            insight = "Tsu's internet is laggy! No competitive games!";
+        } else if (averageMs < 120) {
+            insight = "The connection is laggy! No competitive games!";
             color = Color.of(255, 75, 8);
             image = "https://media.giphy.com/media/snEeOh54kCFxe/giphy.gif";
-        }
-        else {
-            if (jitterPercent < 20) {
-                insight = "Tsu's internet is really bad! Playing online right now is not wise!";
-                color = Color.of(255, 0, 0);
-                image = "https://media.giphy.com/media/gpuwFOUBEM1aM/giphy.gif";
-            } else if (jitterPercent < 40) {
-                insight = "Tsu's internet is currently akin to a bad mood generator. Avoid online!";
-                color = Color.of(180, 0, 0);
-                image = "https://media.giphy.com/media/kdQqSfBiIkAVGCAIOD/giphy.gif";
-            } else if (jitterPercent < 60) {
-                insight = "Jitter above 40% detected! Only turn based strategy games are playable!";
-                color = Color.of(110, 0, 0);
-                image = "https://media.giphy.com/media/ibv61nlDmaToQ1gqEn/giphy.gif";
-            } else if (jitterPercent < 80) {
-                insight = "Jitter above 60% detected! Don't even bother asking to play!";
-                color = Color.of(60, 0, 0);
-                image = "https://media.giphy.com/media/3LyZBPN2iv76muaPlu/giphy.gif";
-            } else if (jitterPercent < 100) {
-                insight = "Jitter above 80% detected! Today is not a good day for even YouTube!";
-                color = Color.of(30, 0, 0);
-                image = "https://media.giphy.com/media/XUFPGrX5Zis6Y/giphy.gif";
-            } else {
-                insight = "Jitter above 100% detected! Mars Curiosity rover called, it wants its RTT back!";
-                color = Color.of(0, 255, 0);
-                image = "https://media.giphy.com/media/3og0IFrHkIglEOg8Ba/giphy.gif";
-            }
+        } else if (averageMs < 150) {
+            insight = "The connection is really bad! Playing online right now is not wise!";
+            color = Color.of(255, 0, 0);
+            image = "https://media.giphy.com/media/gpuwFOUBEM1aM/giphy.gif";
+        } else if (averageMs < 200) {
+            insight = "The connection is currently akin to a bad mood generator. Avoid online!";
+            color = Color.of(180, 0, 0);
+            image = "https://media.giphy.com/media/kdQqSfBiIkAVGCAIOD/giphy.gif";
+        } else if (averageMs < 250) {
+            insight = "Please don't waste your time with anything competitive.";
+            color = Color.of(110, 0, 0);
+            image = "https://media.giphy.com/media/ibv61nlDmaToQ1gqEn/giphy.gif";
+        } else if (averageMs < 300) {
+            insight = "By the time you get this message, it probably already got worse.";
+            color = Color.of(60, 0, 0);
+            image = "https://media.giphy.com/media/3LyZBPN2iv76muaPlu/giphy.gif";
+        } else if (averageMs < 350) {
+            insight = "Today is not a good day for even YouTube! Try using telnet for chess maybe.";
+            color = Color.of(30, 0, 0);
+            image = "https://media.giphy.com/media/XUFPGrX5Zis6Y/giphy.gif";
+        } else {
+            insight = "Mars Curiosity rover called, it wants its RTT back!";
+            color = Color.of(0, 255, 0);
+            image = "https://media.giphy.com/media/3og0IFrHkIglEOg8Ba/giphy.gif";
         }
     }
 
