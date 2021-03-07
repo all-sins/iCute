@@ -11,7 +11,6 @@ public class TsuICMP {
 
     private String image;
     private Color color;
-    private int pointer = 0;
     private float averageMs;
     private long highestMs;
     private long lowestMs;
@@ -25,6 +24,8 @@ public class TsuICMP {
     // Values with important init values.
     private int minInterval = 1000;
     private int maxInterval = 5000;
+    private int pointer = 0;
+    private int spikes = 0;
 
     // Constants.
     private static final String[] domainList = new String[]{
@@ -40,11 +41,13 @@ public class TsuICMP {
             "9.9.9.9", "149.112.112.112"
     };
 
-    private final List<Spike> spikes = new ArrayList<>();
-    public static final TsuICMP tsuICMP = new TsuICMP();
+    // Set constructor to private so that the class cannot be instantiated.
+    private TsuICMP() {
+    }
+
+    public static final TsuICMP tsuICMP = new TsuICMP(); // Used as a singleton.
     private static final int timeout = 1000; // Maximum timeout for ping.
     private static final int[] msList = new int[100]; // Amount of results to keep in memory.
-    public static final int msListSize = msList.length; // Measuring array size for use in Spike class.
     private static final Random randomGen = new Random(); // Random number generator.
 
     public boolean isMeasurerRunning() {
@@ -99,8 +102,12 @@ public class TsuICMP {
         return jitter;
     }
 
-    public List<Spike> getSpikes() {
+    public int getSpikes() {
         return spikes;
+    }
+
+    public int getPointer() {
+        return pointer;
     }
 
     public int getRandomInt(int max, int min) {
@@ -158,6 +165,7 @@ public class TsuICMP {
         } catch (UnknownHostException e) {
             System.out.println("Can not resolve: " + host);
         }
+
     }
 
     public void runMeasurer() {
@@ -165,7 +173,6 @@ public class TsuICMP {
         new Thread( () -> {
             while (measurerRunning) {
                 tsuICMP.measure();
-                // tsuICMP.printResultArray();
             }
         }).start();
     }
@@ -212,51 +219,44 @@ public class TsuICMP {
 
     public void analyse() {
 
-        // Find lowest ping.
         float sum = 0;
         int min = msList[0];
         int max = msList[0];
-
-        // Calculate sum of all elements.
-        for (int i : msList) {
-            sum += i;
-        }
-        averageMs = BigDecimal.valueOf(sum / getArrayInitAmount()).setScale(2, RoundingMode.UP).floatValue();
 
         for (int item : msList) {
 
             // Extra check for 0 while array inits.
             if (item != 0) {
+
                 // Calculate minimum.
                 if (item < min) {
                     min = item;
                 }
 
-                // If a item in the latency list deviates by half then assume that it's a spike.
-                if (item > averageMs + 30) {
-                    spikes.add(new Spike(item));
-                }
             }
-
-            // Lover TTL on all Spike's in spikes list or remove spike if it's TTL runs out.
-            List<Spike> spikesToRemove = new ArrayList<>();
-            for (Spike spike : spikes) {
-                if (spike.ttl - 1 <= 0) {
-                    spikesToRemove.add(spike);
-                } else {
-                    spike.ttl--;
-                }
-            }
-            spikes.removeAll(spikesToRemove);
 
             // Calculate maximum.
             if (item > max) {
                 max = item;
             }
 
+            // Calculate sum of all elements.
+            sum += item;
+
         }
         highestMs = max;
         lowestMs = min;
+        averageMs = BigDecimal.valueOf(sum / getArrayInitAmount()).setScale(2, RoundingMode.UP).floatValue();
+
+        // Determine amount of lag spikes.
+        spikes = 0;
+        for (int item : msList) {
+            if (item != 0) {
+                if (item > averageMs + 35) {
+                    spikes++;
+                }
+            }
+        }
 
         // Calculate difference between average, minimum and maximum as a number and as a percentage.
         // https://www.calculatorsoup.com/calculators/algebra/percent-difference-calculator.php
@@ -268,19 +268,19 @@ public class TsuICMP {
         // Determine insight.
         // Switch statement doesn't work with logical operators, so unfortunately my hand was forced to make this
         // huge if else chain.
-        if (averageMs < 30 && spikes.size() < 0.05 * msList.length) {
+        if (averageMs < 30 && spikes < 0.05 * msList.length) {
             insight = "The connection is currently absolutely amazing! Good for even fighting games!";
             color = Color.of(0, 255, 255);
             image = "https://i.pinimg.com/originals/9c/da/52/9cda52a9128defc55ed86e8bd7c55f54.gif";
-        } else if (averageMs < 50 && spikes.size() < 0.10 * msList.length) {
+        } else if (averageMs < 50 && spikes < 0.10 * msList.length) {
             insight = "The connection is alright! Passable for shooters!";
             color = Color.of(0, 255, 0);
             image = "https://media.giphy.com/media/EktbegF3J8QIo/giphy.gif";
-        } else if (averageMs < 70 && spikes.size() < 0.15 * msList.length) {
+        } else if (averageMs < 70 && spikes < 0.15 * msList.length) {
             insight = "The connection is acceptable! Sketchy though!";
             color = Color.of(255, 255, 0);
             image = "https://media.giphy.com/media/dZXFMaFBlReiA/giphy.gif";
-        } else if (averageMs < 90 && spikes.size() < 0.20 * msList.length) {
+        } else if (averageMs < 90 && spikes < 0.20 * msList.length) {
             insight = "The connection is borderline laggy! You tempt fate by playing!";
             color = Color.of(255, 100, 0);
             image = "https://media.giphy.com/media/RwnFuvcQTktQA/giphy.gif";

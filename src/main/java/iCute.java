@@ -1,3 +1,5 @@
+import com.sun.xml.internal.fastinfoset.util.CharArray;
+import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
 import discord4j.core.GatewayDiscordClient;
 import discord4j.core.event.domain.message.MessageCreateEvent;
@@ -8,6 +10,7 @@ import discord4j.core.object.reaction.ReactionEmoji;
 import discord4j.rest.util.Color;
 import jdk.nashorn.internal.runtime.regexp.joni.exception.InternalException;
 import picocli.CommandLine;
+import reactor.core.publisher.Signal;
 
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
@@ -16,6 +19,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 public class iCute {
@@ -75,7 +79,7 @@ public class iCute {
             if ("$ctp".equals(message.getContent())) {
 
                 long startTimer = System.currentTimeMillis();
-                message.addReaction(ReactionEmoji.unicode("\u2705"));
+                message.addReaction(ReactionEmoji.unicode("\u2705")).block();
                 System.out.println("Processing \"$ctp\" request from "+username);
                 tsuICMP.analyse();
                 String poolUtilization = (tsuICMP.getArrayInitAmount() * 100) / tsuICMP.getMsList().length+ "%";
@@ -100,10 +104,10 @@ public class iCute {
                         .addField("Jitter %", tsuICMP.getJitterPercent() + " %", true)
                         .addField("Pool size", String.valueOf(tsuICMP.getMsList().length), true)
                         .addField("Pool utilization", poolUtilization, true)
-                        .addField("Latency spikes", String.valueOf(tsuICMP.getSpikes().size()), true)
+                        .addField("Latency spikes", String.valueOf(tsuICMP.getSpikes()), true)
                         .addField("iCute verdict", tsuICMP.getInsight(), false)
                         //.setThumbnail(tsuICMP.getIŗmage())
-                        .setFooter("Testing done against Google DNS servers.", googleIcon)
+                        .setFooter("Testing done against a variety of DNS servers.", googleIcon)
                         .setTimestamp(Instant.now())
                 ).block();
             }
@@ -138,6 +142,48 @@ public class iCute {
                     }
                 } else {
                     // auth bad
+                    channel.createMessage("You are not authorized to issue this command to me "+username+"!").block();
+                }
+            }
+
+            // Purge a specified amount of messages.
+            if (messageText.startsWith("$purge:")) {
+                // User is allowed to take this action.
+                if (adminUsers.contains(fullUsername)) {
+                    String commandParameter = messageText.substring(7);
+                    StringTools stringTools = new StringTools();
+                    int paramaterAsInt;
+                    // Check against Strings that are dangerously large.
+                    if (commandParameter.length() <= 9) {
+                        if (commandParameter.length() != 0) {
+                            if (!stringTools.containtsCharsBesides(commandParameter, "0123456789")) {
+                                paramaterAsInt = Integer.parseInt(commandParameter);
+
+
+                                // TODO: There has to be a better way.
+                                Snowflake now = Snowflake.of(Instant.now());
+                                List<Message> messages = channel.getMessagesBefore(now).buffer(paramaterAsInt).blockFirst();
+                                if (messages != null) {
+                                    for (Message msg : messages) {
+                                        msg.delete().block();
+                                    }
+                                } else {
+                                    System.out.println("Attempted message deletion was run on null value!");
+                                }
+                                channel.createMessage("Purged "+paramaterAsInt+" messages!").block();
+
+
+                            } else {
+                                channel.createMessage("Illegal parameter used! Please use numbers only!").block();
+                            }
+                        } else {
+                            channel.createMessage("Illegal parameter used! Please supply a parameter!").block();
+                        }
+                    } else {
+                        channel.createMessage("Illegal parameter used! Please use no more than 9 digits!").block();
+                    }
+                    // User is allowed to take this action.
+                } else {
                     channel.createMessage("You are not authorized to issue this command to me "+username+"!").block();
                 }
             }
