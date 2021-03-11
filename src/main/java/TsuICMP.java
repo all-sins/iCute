@@ -177,6 +177,8 @@ public class TsuICMP {
         }).start();
     }
 
+    // TODO: Create reminder thread for sending a mention when internet is not bad.
+
     // DEBUG FUNCTION
     private void printResultArray() {
         for (int i = 0; i < msList.length; i++) {
