@@ -1,6 +1,6 @@
 public class StringTools {
 
-    public boolean containtsCharsBesides(String stringToCheck, String whitelistChars) {
+    public boolean containsCharsBesides(String stringToCheck, String whitelistChars) {
         char[] allowedChars = whitelistChars.toCharArray();
         int checkedCharCount = 0;
         for (char c : stringToCheck.toCharArray()) {

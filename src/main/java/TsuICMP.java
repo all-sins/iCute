@@ -1,3 +1,6 @@
+import discord4j.core.object.entity.Message;
+import discord4j.core.object.entity.User;
+import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.rest.util.Color;
 
 import java.io.IOException;
@@ -45,6 +48,7 @@ public class TsuICMP {
     private TsuICMP() {
     }
 
+    public static Status status;
     public static final TsuICMP tsuICMP = new TsuICMP(); // Used as a singleton.
     private static final int timeout = 1000; // Maximum timeout for ping.
     private static final int[] msList = new int[100]; // Amount of results to keep in memory.
@@ -170,7 +174,7 @@ public class TsuICMP {
 
     public void runMeasurer() {
         // Run a thread to constantly populate results.
-        new Thread( () -> {
+        new Thread(() -> {
             while (measurerRunning) {
                 tsuICMP.measure();
             }
@@ -178,6 +182,51 @@ public class TsuICMP {
     }
 
     // TODO: Create reminder thread for sending a mention when internet is not bad.
+    public void runReminder(Message message) {
+        // Define a set of desired statuses.
+        List<Status> desiredStatuses = new ArrayList<>(Arrays.asList(Status.EXCELLENT, Status.GOOD));
+        long interval = 20000L;
+        int neededPassingMeasurements = 30;
+
+        // Run a thread to periodically check if the internet is good or not.
+        new Thread(() -> {
+            System.out.println("Reminder thread running.");
+            MessageChannel channel = message.getChannel().block();
+            User author = message.getAuthor().get();
+
+            if (channel != null && message.getAuthor().isPresent()) {
+                channel.createMessage("I will let you know when the internet is not trash, "+ author.getUsername()).block();
+            } else {
+                System.out.println("Couldn't create notification! Exiting!");
+                return;
+            }
+
+            // Measure and check the connection until desired quality is achieved.
+            int passingMeasurements = 0;
+            do {
+                tsuICMP.analyse();
+
+                // Make it so it only passes if the last couple of measurements were good. Not just one.
+                if (desiredStatuses.contains(status) && getArrayInitAmount() == msList.length) {
+                    passingMeasurements++;
+                } else {
+                    passingMeasurements = 0;
+                }
+                System.out.println(status+" ["+getArrayInitAmount()+"/"+msList.length+"] PASSES ("+passingMeasurements+")");
+
+                // Sleep for interval amount of ms.
+                try {
+                    Thread.sleep(interval);
+                } catch (InterruptedException e) {
+                    System.out.println("Couldn't sleep! Exiting!");
+                    return;
+                }
+            } while (passingMeasurements < neededPassingMeasurements);
+
+            // Send a mention to the person that initiated the command when and if the connection gets better.
+            channel.createMessage("Internet is looking decent now "+author.getMention()+"! Please check details with $ctp command.").block();
+        }).start();
+    }
 
     // DEBUG FUNCTION
     private void printResultArray() {
@@ -185,7 +234,7 @@ public class TsuICMP {
             StringBuilder formatting = new StringBuilder();
 
             // Calculate how many digits the number has.
-            int tmpNumber = (int) msList[i];
+            int tmpNumber = msList[i];
             int amountOfDigits = 0;
             while (tmpNumber > 0) {
                 tmpNumber /= 10;
@@ -212,7 +261,7 @@ public class TsuICMP {
             // Print out with specific amount of columns.
             int columnLimit = 10;
             if (i % columnLimit == 0) {
-                System.out.print("\n"+ msList[i] + formatting.toString());
+                System.out.print("\n" + msList[i] + formatting.toString());
             } else {
                 System.out.print(msList[i] + formatting.toString());
             }
@@ -274,26 +323,32 @@ public class TsuICMP {
             insight = "The connection is currently absolutely amazing! Good for even fighting games!";
             color = Color.of(0, 255, 255);
             image = "https://i.pinimg.com/originals/9c/da/52/9cda52a9128defc55ed86e8bd7c55f54.gif";
+            status = Status.EXCELLENT;
         } else if (averageMs < 50 && spikes < 0.10 * msList.length) {
             insight = "The connection is alright! Passable for shooters!";
             color = Color.of(0, 255, 0);
             image = "https://media.giphy.com/media/EktbegF3J8QIo/giphy.gif";
+            status = Status.GOOD;
         } else if (averageMs < 70 && spikes < 0.15 * msList.length) {
             insight = "The connection is acceptable! Sketchy though!";
             color = Color.of(255, 255, 0);
             image = "https://media.giphy.com/media/dZXFMaFBlReiA/giphy.gif";
+            status = Status.DODGY;
         } else if (averageMs < 90 && spikes < 0.20 * msList.length) {
             insight = "The connection is borderline laggy! You tempt fate by playing!";
             color = Color.of(255, 100, 0);
             image = "https://media.giphy.com/media/RwnFuvcQTktQA/giphy.gif";
+            status = Status.BAD;
         } else if (averageMs < 120) {
             insight = "The connection is laggy! No competitive games!";
             color = Color.of(255, 75, 8);
             image = "https://media.giphy.com/media/snEeOh54kCFxe/giphy.gif";
+            status = Status.TERRIBLE;
         } else if (averageMs < 150) {
             insight = "The connection is really bad! Playing online right now is not wise!";
             color = Color.of(255, 0, 0);
             image = "https://media.giphy.com/media/gpuwFOUBEM1aM/giphy.gif";
+            status = Status.TRASH;
         } else if (averageMs < 200) {
             insight = "The connection is currently akin to a bad mood generator. Avoid online!";
             color = Color.of(180, 0, 0);
@@ -302,18 +357,22 @@ public class TsuICMP {
             insight = "Please don't waste your time with anything competitive.";
             color = Color.of(110, 0, 0);
             image = "https://media.giphy.com/media/ibv61nlDmaToQ1gqEn/giphy.gif";
+            status = Status.TRASH;
         } else if (averageMs < 300) {
             insight = "By the time you get this message, it probably already got worse.";
             color = Color.of(60, 0, 0);
             image = "https://media.giphy.com/media/3LyZBPN2iv76muaPlu/giphy.gif";
+            status = Status.TRASH;
         } else if (averageMs < 350) {
             insight = "Today is not a good day for even YouTube! Try using telnet for chess maybe.";
             color = Color.of(30, 0, 0);
             image = "https://media.giphy.com/media/XUFPGrX5Zis6Y/giphy.gif";
+            status = Status.TRASH;
         } else {
             insight = "Mars Curiosity rover called, it wants its RTT back!";
             color = Color.of(0, 255, 0);
             image = "https://media.giphy.com/media/3og0IFrHkIglEOg8Ba/giphy.gif";
+            status = Status.TRASH;
         }
     }
 

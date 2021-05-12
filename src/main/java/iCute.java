@@ -1,4 +1,3 @@
-import com.sun.xml.internal.fastinfoset.util.CharArray;
 import discord4j.common.util.Snowflake;
 import discord4j.core.DiscordClient;
 import discord4j.core.GatewayDiscordClient;
@@ -10,7 +9,6 @@ import discord4j.core.object.reaction.ReactionEmoji;
 import discord4j.rest.util.Color;
 import jdk.nashorn.internal.runtime.regexp.joni.exception.InternalException;
 import picocli.CommandLine;
-import reactor.core.publisher.Signal;
 
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
@@ -116,6 +114,7 @@ public class iCute {
             // Turn ON.
             if (messageText.startsWith("$measuring:")) {
                 if (adminUsers.contains(fullUsername)) {
+                    message.addReaction(ReactionEmoji.unicode("\u2705")).block();
                     if (messageText.equals("$measuring:on")) {
                         // turn on
                         if (tsuICMP.isMeasurerRunning()) {
@@ -150,19 +149,20 @@ public class iCute {
             if (messageText.startsWith("$purge:")) {
                 // User is allowed to take this action.
                 if (adminUsers.contains(fullUsername)) {
+                    message.addReaction(ReactionEmoji.unicode("\u2705")).block();
                     String commandParameter = messageText.substring(7);
                     StringTools stringTools = new StringTools();
-                    int paramaterAsInt;
+                    int parameterAsInt;
                     // Check against Strings that are dangerously large.
                     if (commandParameter.length() <= 9) {
                         if (commandParameter.length() != 0) {
-                            if (!stringTools.containtsCharsBesides(commandParameter, "0123456789")) {
-                                paramaterAsInt = Integer.parseInt(commandParameter);
+                            if (!stringTools.containsCharsBesides(commandParameter, "0123456789")) {
+                                parameterAsInt = Integer.parseInt(commandParameter);
 
 
                                 // TODO: There has to be a better way.
                                 Snowflake now = Snowflake.of(Instant.now());
-                                List<Message> messages = channel.getMessagesBefore(now).buffer(paramaterAsInt).blockFirst();
+                                List<Message> messages = channel.getMessagesBefore(now).buffer(parameterAsInt).blockFirst();
                                 if (messages != null) {
                                     for (Message msg : messages) {
                                         msg.delete().block();
@@ -170,7 +170,7 @@ public class iCute {
                                 } else {
                                     System.out.println("Attempted message deletion was run on null value!");
                                 }
-                                channel.createMessage("Purged "+paramaterAsInt+" messages!").block();
+                                channel.createMessage("Purged "+parameterAsInt+" messages!").block();
 
 
                             } else {
@@ -188,8 +188,13 @@ public class iCute {
                 }
             }
 
+            if (messageText.equals("$notifyme")) {
+                message.addReaction(ReactionEmoji.unicode("\u2705")).block();
+                tsuICMP.runReminder(message);
+            }
+
         });
 
-        gateway.onDisconnect().block();
+        gateway.onDisconnect().retry().block();
     }
 }
