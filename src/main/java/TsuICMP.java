@@ -25,8 +25,8 @@ public class TsuICMP {
     private float jitter;
 
     // Values with important init values.
-    private int minInterval = 1000;
-    private int maxInterval = 5000;
+    private final int minInterval = 10000;
+    private final int maxInterval = 60000;
     private int pointer = 0;
     private int spikes = 0;
 
@@ -229,7 +229,7 @@ public class TsuICMP {
     }
 
     // DEBUG FUNCTION
-    private void printResultArray() {
+    public void printResultArray() {
         for (int i = 0; i < msList.length; i++) {
             StringBuilder formatting = new StringBuilder();
 

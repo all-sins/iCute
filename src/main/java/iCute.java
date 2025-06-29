@@ -7,7 +7,7 @@ import discord4j.core.object.entity.User;
 import discord4j.core.object.entity.channel.MessageChannel;
 import discord4j.core.object.reaction.ReactionEmoji;
 import discord4j.rest.util.Color;
-import jdk.nashorn.internal.runtime.regexp.joni.exception.InternalException;
+//import jdk.nashorn.internal.runtime.regexp.joni.exception.InternalException;
 import picocli.CommandLine;
 
 import java.io.BufferedReader;
@@ -40,16 +40,16 @@ public class iCute {
             token = stringBuilder.toString();
             bufferedReader.close();
         } catch (FileNotFoundException e) {
-            throw new InternalException("Token file not found in root of application!");
+            throw new RuntimeException("Token file not found in root of application!");
         } catch (IOException e) {
-            throw new InternalException("Token file could not be read.");
+            throw new RuntimeException("Token file could not be read.");
         }
 
         final String googleIcon = "https://external-content.duckduckgo.com/iu/?u=http%3A%2F%2Fwww.androidpoli"+
                 "ce.com%2Fwp-content%2Fuploads%2F2015%2F09%2Fnexus2cee_new_google_icon.png&f=1&nofb=1";
         final DiscordClient client = DiscordClient.create(token);
         final GatewayDiscordClient gateway = client.login().block();
-        final ArrayList<String> adminUsers = new ArrayList<>(Arrays.asList("Tsu#5168"));
+        final ArrayList<String> adminUsers = new ArrayList<>(Arrays.asList("Tsu#5168", "og.tsu"));
 
         // Check if gateway was created successfully. Prevent potential null pointer exception later on.
         if (gateway == null) {
@@ -60,12 +60,16 @@ public class iCute {
         TsuICMP tsuICMP = TsuICMP.tsuICMP;
         tsuICMP.runMeasurer();
 
+        https://discord.com/oauth2/authorize?client_id=1364960464777510992&scope=bot+applications.commands&permissions=563467497368640
+
         // Subscribe to MessageCreateEvent and execute the following code when it's fired.
         gateway.on(MessageCreateEvent.class).subscribe(event -> {
             final Message message = event.getMessage();
             final MessageChannel channel = message.getChannel().block();
             final Optional<User> author = message.getAuthor();
-            final String fullUsername = author.map(user -> user.getUsername() + "#" + user.getDiscriminator())
+            //final String fullUsername = author.map(user -> user.getUsername() + "#" + user.getDiscriminator())
+            //        .orElse("FULL_USERNAME_GET_ERROR");
+            final String fullUsername = author.map(User::getUsername)
                     .orElse("FULL_USERNAME_GET_ERROR");
             final String username = author.map(User::getUsername).orElse("USERNAME_GET_ERROR");
             final String messageText = message.getContent();
@@ -89,6 +93,7 @@ public class iCute {
                     titleMessage = "Request took "+timeTaken+" seconds.";
                 }
 
+                tsuICMP.printResultArray();
                 channel.createEmbed(spec -> spec
                         .setColor(tsuICMP.getColor())
                         .setImage(tsuICMP.getImage())
@@ -141,6 +146,7 @@ public class iCute {
                     }
                 } else {
                     // auth bad
+                    System.out.println("fullUsername = " + fullUsername);
                     channel.createMessage("You are not authorized to issue this command to me "+username+"!").block();
                 }
             }
